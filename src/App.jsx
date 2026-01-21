@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { HashRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Dashboard from './pages/Dashboard'
 import TodoPage from './pages/TodoPage'
