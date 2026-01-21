@@ -106,6 +106,7 @@ function Sidebar({ theme, toggleTheme, isOpen, setIsOpen, onSignOut, userEmail }
             <NavLink
               key={item.path}
               to={item.path}
+              end
               className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}
               onClick={() => setIsOpen(false)}
             >
@@ -181,6 +182,7 @@ function MobileNav() {
           <NavLink
             key={item.path}
             to={item.path}
+            end
             className={({ isActive }) => `mobile-nav-item ${isActive ? 'active' : ''}`}
           >
             {item.icon}
