@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useCourses } from '../hooks/useCourses'
+import ConfirmModal from '../components/ConfirmModal'
 
 const PlusIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: 20, height: 20 }}>
@@ -23,34 +24,41 @@ const colors = [
 ]
 
 function CoursesPage() {
-    const [courses, setCourses] = useLocalStorage('courses', [])
+    const { courses, loading, addCourse: addCourseAPI, deleteCourse: deleteCourseAPI, addTopic: addTopicAPI, toggleTopic, deleteTopic: deleteTopicAPI } = useCourses()
     const [showAdd, setShowAdd] = useState(false)
     const [expanded, setExpanded] = useState(null)
     const [newCourse, setNewCourse] = useState({ name: '', colorIndex: 0 })
     const [newTopic, setNewTopic] = useState('')
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, type: '', courseId: null })
 
-    const addCourse = (e) => {
+    const addCourse = async (e) => {
         e.preventDefault()
         if (!newCourse.name.trim()) return
-        setCourses([...courses, { id: Date.now(), name: newCourse.name.trim(), colorIndex: newCourse.colorIndex, topics: [] }])
+        await addCourseAPI(newCourse.name.trim(), newCourse.colorIndex)
         setNewCourse({ name: '', colorIndex: 0 })
         setShowAdd(false)
     }
 
-    const deleteCourse = (id) => setCourses(courses.filter((c) => c.id !== id))
+    const deleteCourse = (id) => {
+        setConfirmModal({ isOpen: true, item: id, type: 'course', courseId: null })
+    }
 
-    const addTopic = (courseId) => {
+    const addTopic = async (courseId) => {
         if (!newTopic.trim()) return
-        setCourses(courses.map((c) => c.id === courseId ? { ...c, topics: [...c.topics, { id: Date.now(), name: newTopic.trim(), completed: false }] } : c))
+        await addTopicAPI(courseId, newTopic.trim())
         setNewTopic('')
     }
 
-    const toggleTopic = (courseId, topicId) => {
-        setCourses(courses.map((c) => c.id === courseId ? { ...c, topics: c.topics.map((t) => t.id === topicId ? { ...t, completed: !t.completed } : t) } : c))
+    const deleteTopic = (courseId, topicId) => {
+        setConfirmModal({ isOpen: true, item: topicId, type: 'topic', courseId })
     }
 
-    const deleteTopic = (courseId, topicId) => {
-        setCourses(courses.map((c) => c.id === courseId ? { ...c, topics: c.topics.filter((t) => t.id !== topicId) } : c))
+    const handleConfirmDelete = async () => {
+        if (confirmModal.type === 'course') {
+            await deleteCourseAPI(confirmModal.item)
+        } else if (confirmModal.type === 'topic') {
+            await deleteTopicAPI(confirmModal.courseId, confirmModal.item)
+        }
     }
 
     const getProgress = (c) => c.topics?.length ? Math.round((c.topics.filter((t) => t.completed).length / c.topics.length) * 100) : 0
@@ -64,17 +72,24 @@ function CoursesPage() {
 
             <button className="btn btn-primary mb-lg" onClick={() => setShowAdd(true)}><PlusIcon /> Yeni Ders Ekle</button>
 
+            {loading && (
+                <div className="card empty-state">
+                    <p>Yükleniyor...</p>
+                </div>
+            )}
+
+            {!loading && (
             <div className="flex flex-col gap-md">
                 {courses.length === 0 ? (
                     <div className="card empty-state"><p>Henüz ders eklenmemiş</p></div>
                 ) : courses.map((course) => {
-                    const c = colors[course.colorIndex] || colors[0]
+                    const c = colors[course.color_index] || colors[0]
                     const isExp = expanded === course.id
                     return (
                         <div key={course.id} className="card" style={{ padding: 0 }}>
                             <div style={{ padding: 'var(--space-md)', background: c.bg, cursor: 'pointer' }} onClick={() => setExpanded(isExp ? null : course.id)}>
                                 <div className="flex items-center justify-between">
-                                    <div><h3 style={{ color: c.color }}>{course.name}</h3><p style={{ fontSize: '0.75rem' }}>{course.topics?.length || 0} konu • %{getProgress(course)}</p></div>
+                                    <div><h3 style={{ color: c.color }}>{course.name}</h3><p style={{ fontSize: '0.75rem', color: c.color, opacity: 0.8 }}>{course.topics?.length || 0} konu • %{getProgress(course)}</p></div>
                                     <button className="btn btn-icon btn-secondary" onClick={(e) => { e.stopPropagation(); deleteCourse(course.id) }}><TrashIcon /></button>
                                 </div>
                                 <div className="progress-bar mt-sm" style={{ height: 6 }}><div className="progress-fill" style={{ width: `${getProgress(course)}%`, background: c.color }} /></div>
@@ -82,7 +97,23 @@ function CoursesPage() {
                             {isExp && (
                                 <div style={{ padding: 'var(--space-md)' }}>
                                     <div className="flex gap-sm mb-md">
-                                        <input placeholder="Yeni konu..." value={newTopic} onChange={(e) => setNewTopic(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTopic(course.id)} style={{ flex: 1 }} />
+                                        <input 
+                                            placeholder="Yeni konu..." 
+                                            value={newTopic} 
+                                            onChange={(e) => {
+                                                let text = e.target.value;
+                                                if (text.length === 1) {
+                                                    text = text.toUpperCase();
+                                                } else {
+                                                    text = text.replace(/([.!?]\s+)([a-zçğıöşü])/g, (match, punctuation, letter) => {
+                                                        return punctuation + letter.toUpperCase();
+                                                    });
+                                                }
+                                                setNewTopic(text);
+                                            }} 
+                                            onKeyDown={(e) => e.key === 'Enter' && addTopic(course.id)} 
+                                            style={{ flex: 1 }} 
+                                        />
                                         <button className="btn btn-primary" onClick={() => addTopic(course.id)}><PlusIcon /></button>
                                     </div>
                                     {course.topics?.map((t) => (
@@ -100,19 +131,46 @@ function CoursesPage() {
                     )
                 })}
             </div>
+            )}
 
             {showAdd && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 'var(--space-md)' }} onClick={() => setShowAdd(false)}>
                     <div className="card" style={{ maxWidth: 400, width: '100%' }} onClick={(e) => e.stopPropagation()}>
                         <h3 className="mb-md">Yeni Ders</h3>
                         <form onSubmit={addCourse} className="flex flex-col gap-md">
-                            <input placeholder="Ders adı" value={newCourse.name} onChange={(e) => setNewCourse({ ...newCourse, name: e.target.value })} autoFocus />
+                            <input 
+                                placeholder="Ders adı" 
+                                value={newCourse.name} 
+                                onChange={(e) => {
+                                    let text = e.target.value;
+                                    if (text.length === 1) {
+                                        text = text.toUpperCase();
+                                    } else {
+                                        text = text.replace(/([.!?]\s+)([a-zçğıöşü])/g, (match, punctuation, letter) => {
+                                            return punctuation + letter.toUpperCase();
+                                        });
+                                    }
+                                    setNewCourse({ ...newCourse, name: text });
+                                }} 
+                                autoFocus 
+                            />
                             <div className="flex gap-sm">{colors.map((cl, i) => (<button key={i} type="button" onClick={() => setNewCourse({ ...newCourse, colorIndex: i })} style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', background: cl.bg, border: newCourse.colorIndex === i ? `3px solid ${cl.color}` : 'none', cursor: 'pointer' }} />))}</div>
                             <div className="flex gap-sm"><button type="button" className="btn btn-secondary" onClick={() => setShowAdd(false)} style={{ flex: 1 }}>İptal</button><button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Ekle</button></div>
                         </form>
                     </div>
                 </div>
             )}
+
+            {/* Delete Confirmation Modal */}
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ isOpen: false, item: null, type: '', courseId: null })}
+                onConfirm={handleConfirmDelete}
+                title={confirmModal.type === 'course' ? 'Dersi silmek istediğinize emin misiniz?' : 'Konuyu silmek istediğinize emin misiniz?'}
+                message={confirmModal.type === 'course' 
+                    ? 'Bu ders ve tüm konuları kalıcı olarak silinecek. Bu işlem geri alınamaz.'
+                    : 'Bu konu kalıcı olarak silinecek. Bu işlem geri alınamaz.'}
+            />
         </div>
     )
 }

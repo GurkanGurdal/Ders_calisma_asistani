@@ -34,15 +34,20 @@ export function useLocalStorage(key, initialValue) {
         try {
             const valueToStore = value instanceof Function ? value(storedValue) : value
 
-            // Check storage limit before saving
+            // Check storage limit before saving (only for large data)
             const dataString = JSON.stringify(valueToStore)
             const dataSize = dataString.length * 2
             const currentSize = getStorageSize()
             const maxSize = 4.5 * 1024 * 1024 // 4.5MB safety limit
 
-            if (currentSize + dataSize > maxSize) {
-                console.warn('localStorage limit warning - data may not be saved')
-                alert('Depolama alanı dolmak üzere! Bazı büyük dosyaları silmeniz gerekebilir.')
+            // Only warn if data is > 100KB and total storage is > 4MB
+            if (dataSize > 100 * 1024 && currentSize > 4 * 1024 * 1024) {
+                console.warn('localStorage limit warning - current size:', (currentSize / 1024 / 1024).toFixed(2), 'MB')
+                
+                // Only show alert for very large data
+                if (dataSize > 500 * 1024) {
+                    alert('Depolama alanı dolmak üzere! Bazı büyük dosyaları silmeniz gerekebilir.')
+                }
             }
 
             // Update state first

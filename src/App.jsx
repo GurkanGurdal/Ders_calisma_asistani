@@ -7,7 +7,10 @@ import SchedulePage from './pages/SchedulePage'
 import CoursesPage from './pages/CoursesPage'
 import PomodoroPage from './pages/PomodoroPage'
 import NotesPage from './pages/NotesPage'
+import LinksPage from './pages/LinksPage'
 import AuthPage from './pages/AuthPage'
+import capybaraLogo from './assets/capybara_logo.png'
+import capybaraLogoDark from './assets/capybara_logo_dark.png'
 import './index.css'
 
 // Icons
@@ -47,6 +50,12 @@ const NotesIcon = () => (
   </svg>
 )
 
+const LinksIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+  </svg>
+)
+
 const SunIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
@@ -74,6 +83,7 @@ function Sidebar({ theme, toggleTheme, isOpen, setIsOpen, onSignOut, userEmail }
     { path: '/schedule', icon: <CalendarIcon />, label: 'Program' },
     { path: '/courses', icon: <BookIcon />, label: 'Dersler' },
     { path: '/notes', icon: <NotesIcon />, label: 'Notlar' },
+    { path: '/links', icon: <LinksIcon />, label: 'Bağlantılar' },
     { path: '/pomodoro', icon: <TimerIcon />, label: 'Pomodoro' },
   ]
 
@@ -81,7 +91,7 @@ function Sidebar({ theme, toggleTheme, isOpen, setIsOpen, onSignOut, userEmail }
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-header" style={{ marginBottom: 'var(--space-xl)' }}>
         <h1 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-          📚 Ders Asistanı
+          <img src={theme === 'dark' ? capybaraLogoDark : capybaraLogo} alt="Capybara" style={{ width: '180px', height: 'auto', objectFit: 'contain' }} />
         </h1>
         {userEmail && (
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 'var(--space-xs)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -107,22 +117,45 @@ function Sidebar({ theme, toggleTheme, isOpen, setIsOpen, onSignOut, userEmail }
       </nav>
 
       <div style={{ marginTop: 'auto', paddingTop: 'var(--space-lg)', borderTop: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-        <button
-          className="btn btn-secondary w-full"
-          onClick={toggleTheme}
-          style={{ justifyContent: 'flex-start' }}
-        >
-          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-          {theme === 'dark' ? 'Aydınlık Mod' : 'Karanlık Mod'}
-        </button>
+        <div className="theme-toggle-container">
+          <label className="theme-toggle-label" htmlFor="theme-switch">
+            {theme === 'dark' ? <MoonIcon /> : <SunIcon />}
+            {theme === 'dark' ? 'Karanlık Mod' : 'Aydınlık Mod'}
+          </label>
+          <label className="theme-toggle-switch">
+            <input
+              id="theme-switch"
+              type="checkbox"
+              checked={theme === 'dark'}
+              onChange={toggleTheme}
+            />
+            <span className="theme-toggle-slider"></span>
+          </label>
+        </div>
         {onSignOut && (
           <button
-            className="btn btn-secondary w-full"
+            className="btn btn-icon btn-secondary"
             onClick={onSignOut}
-            style={{ justifyContent: 'flex-start', color: 'var(--danger)' }}
+            style={{ 
+              color: 'var(--danger)', 
+              width: '100%', 
+              padding: 'var(--space-sm)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            title="Çıkış Yap"
           >
-            <LogoutIcon />
-            Çıkış Yap
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              strokeWidth={1.5} 
+              stroke="currentColor"
+              style={{ width: '18px', height: '18px' }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+            </svg>
           </button>
         )}
       </div>
@@ -137,6 +170,7 @@ function MobileNav() {
     { path: '/schedule', icon: <CalendarIcon />, label: 'Program' },
     { path: '/courses', icon: <BookIcon />, label: 'Dersler' },
     { path: '/notes', icon: <NotesIcon />, label: 'Notlar' },
+    { path: '/links', icon: <LinksIcon />, label: 'Bağlantılar' },
     { path: '/pomodoro', icon: <TimerIcon />, label: 'Pomodoro' },
   ]
 
@@ -177,9 +211,14 @@ function MobileHeader({ theme, toggleTheme, setIsOpen }) {
           <MenuIcon />
         </button>
         <h1 style={{ fontSize: '1rem', fontWeight: 600 }}>📚 Ders Asistanı</h1>
-        <button className="btn btn-icon btn-secondary" onClick={toggleTheme}>
-          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-        </button>
+        <label className="theme-toggle-switch" style={{ width: '44px', height: '24px' }}>
+          <input
+            type="checkbox"
+            checked={theme === 'dark'}
+            onChange={toggleTheme}
+          />
+          <span className="theme-toggle-slider" style={{ borderRadius: '24px' }}></span>
+        </label>
       </div>
       <style>{`
         @media (max-width: 768px) {
@@ -196,12 +235,82 @@ const LogoutIcon = () => (
   </svg>
 )
 
+function ConfirmModal({ isOpen, onClose, onConfirm, title, message }) {
+  if (!isOpen) return null
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 'var(--space-md)',
+      }}
+      onClick={onClose}
+    >
+      <div
+        className="card"
+        style={{
+          maxWidth: '400px',
+          width: '100%',
+          padding: 'var(--space-xl)',
+          textAlign: 'center',
+          animation: 'slideUp 0.3s ease-out',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ fontSize: '3rem', marginBottom: 'var(--space-md)' }}>⚠️</div>
+        <h3 style={{ marginBottom: 'var(--space-sm)', fontSize: '1.25rem' }}>{title}</h3>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-xl)', lineHeight: 1.6 }}>
+          {message}
+        </p>
+        <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={onClose}
+            style={{ flex: 1 }}
+          >
+            İptal
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              onConfirm()
+              onClose()
+            }}
+            style={{ flex: 1, background: 'var(--danger)' }}
+          >
+            Çıkış Yap
+          </button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 function AppContent() {
   const { user, signOut } = useAuth()
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'light'
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -213,6 +322,10 @@ function AppContent() {
   }
 
   const handleSignOut = async () => {
+    setShowLogoutModal(true)
+  }
+
+  const confirmSignOut = async () => {
     await signOut()
   }
 
@@ -236,11 +349,21 @@ function AppContent() {
           <Route path="/schedule" element={<SchedulePage />} />
           <Route path="/courses" element={<CoursesPage />} />
           <Route path="/notes" element={<NotesPage />} />
+          <Route path="/links" element={<LinksPage />} />
           <Route path="/pomodoro" element={<PomodoroPage />} />
         </Routes>
       </main>
 
       <MobileNav />
+
+      {/* Logout Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={confirmSignOut}
+        title="Çıkış Yap"
+        message="Çıkış yapmak istediğinizden emin misiniz? Tüm kaydedilmemiş değişiklikler kaybolabilir."
+      />
 
       {/* Overlay for mobile sidebar */}
       {sidebarOpen && (

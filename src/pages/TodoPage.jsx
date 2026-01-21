@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useTodos } from '../hooks/useTodos'
+import ConfirmModal from '../components/ConfirmModal'
 
 const PlusIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: 20, height: 20 }}>
@@ -20,42 +21,31 @@ const priorityColors = {
 }
 
 function TodoPage() {
-    const [todos, setTodos] = useLocalStorage('todos', [])
+    const { todos, loading, addTodo: addTodoAPI, toggleTodo, deleteTodo: deleteTodoAPI, clearCompleted: clearCompletedAPI } = useTodos()
     const [newTodo, setNewTodo] = useState('')
     const [priority, setPriority] = useState('medium')
     const [filter, setFilter] = useState('all')
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, type: '' })
 
-    const addTodo = (e) => {
+    const addTodo = async (e) => {
         e.preventDefault()
         if (!newTodo.trim()) return
 
-        const todo = {
-            id: Date.now(),
-            text: newTodo.trim(),
-            completed: false,
-            priority,
-            createdAt: new Date().toISOString(),
-        }
-
-        setTodos([todo, ...todos])
+        await addTodoAPI(newTodo.trim(), priority)
         setNewTodo('')
         setPriority('medium')
     }
 
-    const toggleTodo = (id) => {
-        setTodos(
-            todos.map((todo) =>
-                todo.id === id ? { ...todo, completed: !todo.completed } : todo
-            )
-        )
+    const handleClearCompleted = () => {
+        setConfirmModal({ isOpen: true, item: null, type: 'clearCompleted' })
     }
 
-    const deleteTodo = (id) => {
-        setTodos(todos.filter((todo) => todo.id !== id))
-    }
-
-    const clearCompleted = () => {
-        setTodos(todos.filter((todo) => !todo.completed))
+    const handleConfirmDelete = async () => {
+        if (confirmModal.type === 'todo') {
+            await deleteTodoAPI(confirmModal.item)
+        } else if (confirmModal.type === 'clearCompleted') {
+            await clearCompletedAPI()
+        }
     }
 
     const filteredTodos = todos.filter((todo) => {
@@ -83,7 +73,17 @@ function TodoPage() {
                         type="text"
                         placeholder="Yeni görev ekle..."
                         value={newTodo}
-                        onChange={(e) => setNewTodo(e.target.value)}
+                        onChange={(e) => {
+                            let text = e.target.value;
+                            if (text.length === 1) {
+                                text = text.toUpperCase();
+                            } else {
+                                text = text.replace(/([.!?]\s+)([a-zçğıöşü])/g, (match, punctuation, letter) => {
+                                    return punctuation + letter.toUpperCase();
+                                });
+                            }
+                            setNewTodo(text);
+                        }}
                         style={{ flex: 1, minWidth: '200px' }}
                     />
                     <select
@@ -116,7 +116,7 @@ function TodoPage() {
                 {completedCount > 0 && (
                     <button
                         className="btn btn-secondary"
-                        onClick={clearCompleted}
+                        onClick={handleClearCompleted}
                         style={{ marginLeft: 'auto' }}
                     >
                         <TrashIcon />
@@ -125,8 +125,16 @@ function TodoPage() {
                 )}
             </div>
 
+            {/* Loading State */}
+            {loading && (
+                <div className="card empty-state">
+                    <p>Yükleniyor...</p>
+                </div>
+            )}
+
             {/* Todo List */}
-            <div className="flex flex-col gap-sm">
+            {!loading && (
+                <div className="flex flex-col gap-sm">
                 {filteredTodos.length === 0 ? (
                     <div className="card empty-state">
                         <svg
@@ -194,7 +202,7 @@ function TodoPage() {
 
                             <button
                                 className="btn btn-icon btn-secondary"
-                                onClick={() => deleteTodo(todo.id)}
+                                onClick={() => setConfirmModal({ isOpen: true, item: todo.id, type: 'todo' })}
                                 style={{ color: 'var(--danger)' }}
                             >
                                 <TrashIcon />
@@ -203,6 +211,16 @@ function TodoPage() {
                     ))
                 )}
             </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ isOpen: false, item: null, type: '' })}
+                onConfirm={handleConfirmDelete}
+                title={confirmModal.type === 'clearCompleted' ? 'Tüm tamamlananları silmek istediğinize emin misiniz?' : 'Görevi silmek istediğinize emin misiniz?'}
+                message={confirmModal.type === 'clearCompleted' ? 'Tüm tamamlanmış görevler kalıcı olarak silinecek. Bu işlem geri alınamaz.' : 'Bu görev kalıcı olarak silinecek. Bu işlem geri alınamaz.'}
+            />
         </div>
     )
 }

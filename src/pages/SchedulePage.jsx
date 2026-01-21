@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useSchedule } from '../hooks/useSchedule'
+import ConfirmModal from '../components/ConfirmModal'
 
 const PlusIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: 20, height: 20 }}>
@@ -13,19 +14,28 @@ const TrashIcon = () => (
     </svg>
 )
 
-const hours = Array.from({ length: 16 }, (_, i) => i + 6) // 06:00 - 21:00
+const hours = Array.from({ length: 48 }, (_, i) => {
+    const hour = Math.floor(i / 2)
+    const minute = (i % 2) * 30
+    return { hour, minute, display: `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}` }
+}) // 00:00 - 23:30 (48 slots)
 
 function SchedulePage() {
-    const [scheduleBlocks, setScheduleBlocks] = useLocalStorage('scheduleBlocks', [])
+    const { scheduleBlocks, loading, addBlock: addBlockAPI, deleteBlock: deleteBlockAPI } = useSchedule()
     const [showAddModal, setShowAddModal] = useState(false)
     const [selectedDay, setSelectedDay] = useState(new Date().getDay() || 7)
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, blockId: null })
     const [newBlock, setNewBlock] = useState({
         title: '',
-        startHour: 9,
-        endHour: 10,
+        start_hour: 9,
+        start_minute: 0,
+        end_hour: 10,
+        end_minute: 0,
         color: '#3b82f6',
         day: 1,
     })
+    const [titleError, setTitleError] = useState(false)
+    const [alertModal, setAlertModal] = useState({ isOpen: false, message: '' })
 
     const days = [
         { id: 1, name: 'Pazartesi', short: 'Pzt' },
@@ -48,21 +58,83 @@ function SchedulePage() {
         '#84cc16', // lime
     ]
 
-    const addBlock = (e) => {
+    const addBlock = async (e) => {
         e.preventDefault()
-        if (!newBlock.title.trim()) return
+        console.log('Form submitted, newBlock:', newBlock)
+        
+        if (!newBlock.title.trim()) {
+            console.log('Title is empty!')
+            setTitleError(true)
+            return
+        }
+        setTitleError(false)
+
+        // Çakışma kontrolü
+        const newStartTime = newBlock.start_hour * 60 + newBlock.start_minute
+        const newEndTime = newBlock.end_hour * 60 + newBlock.end_minute
+        
+        console.log('Checking overlap for new block:', {
+            start: `${newBlock.start_hour}:${newBlock.start_minute}`,
+            end: `${newBlock.end_hour}:${newBlock.end_minute}`,
+            startMinutes: newStartTime,
+            endMinutes: newEndTime
+        })
+        
+        console.log('Existing blocks:', dayBlocks.map(b => ({
+            title: b.title,
+            start: `${b.start_hour}:${b.start_minute || 0}`,
+            end: `${b.end_hour}:${b.end_minute || 0}`,
+            startMinutes: b.start_hour * 60 + (b.start_minute || 0),
+            endMinutes: b.end_hour * 60 + (b.end_minute || 0)
+        })))
+        
+        const hasOverlap = dayBlocks.some(block => {
+            const existingStart = block.start_hour * 60 + (block.start_minute || 0)
+            const existingEnd = block.end_hour * 60 + (block.end_minute || 0)
+            
+            const overlaps = (newStartTime < existingEnd && newEndTime > existingStart)
+            
+            console.log('Comparing with:', {
+                title: block.title,
+                existingStart,
+                existingEnd,
+                check1: `${newStartTime} < ${existingEnd} = ${newStartTime < existingEnd}`,
+                check2: `${newEndTime} > ${existingStart} = ${newEndTime > existingStart}`,
+                overlaps
+            })
+            
+            return overlaps
+        })
+        
+        console.log('Has overlap:', hasOverlap)
+        
+        if (hasOverlap) {
+            setAlertModal({ isOpen: true, message: 'Bu zaman diliminde zaten bir görev var. Lütfen farklı bir zaman seçin.' })
+            return
+        }
 
         const block = {
-            id: Date.now(),
             ...newBlock,
             day: selectedDay,
         }
 
-        setScheduleBlocks([...scheduleBlocks, block])
+        console.log('Calling API with block:', block)
+        const result = await addBlockAPI(block)
+        console.log('API result:', result)
+        
+        if (result?.error) {
+            console.error('Error from API:', result.error)
+            setAlertModal({ isOpen: true, message: 'Zaman bloğu eklenirken hata oluştu: ' + result.error })
+            return
+        }
+        
+        console.log('Success! Closing modal')
         setNewBlock({
             title: '',
-            startHour: 9,
-            endHour: 10,
+            start_hour: 9,
+            start_minute: 0,
+            end_hour: 10,
+            end_minute: 0,
             color: '#3b82f6',
             day: selectedDay,
         })
@@ -70,13 +142,18 @@ function SchedulePage() {
     }
 
     const deleteBlock = (id) => {
-        setScheduleBlocks(scheduleBlocks.filter((b) => b.id !== id))
+        setConfirmModal({ isOpen: true, blockId: id })
+    }
+
+    const handleConfirmDelete = async () => {
+        await deleteBlockAPI(confirmModal.blockId)
+        setConfirmModal({ isOpen: false, blockId: null })
     }
 
     const dayBlocks = scheduleBlocks.filter((b) => b.day === selectedDay)
 
     return (
-        <div className="fade-in">
+        <div className="fade-in schedule-container">
             <div className="page-header">
                 <h1 className="page-title">Haftalık Program 📅</h1>
                 <p className="page-subtitle">Günlük çalışma planını oluştur</p>
@@ -85,15 +162,14 @@ function SchedulePage() {
             {/* Day Selector */}
             <div
                 className="card mb-lg"
-                style={{ padding: 'var(--space-sm)', overflowX: 'auto' }}
+                style={{ padding: 'var(--space-sm)' }}
             >
-                <div className="flex gap-sm">
+                <div className="schedule-day-buttons">
                     {days.map((day) => (
                         <button
                             key={day.id}
-                            className={`btn ${selectedDay === day.id ? 'btn-primary' : 'btn-secondary'}`}
+                            className={`btn schedule-day-btn ${selectedDay === day.id ? 'btn-primary' : 'btn-secondary'}`}
                             onClick={() => setSelectedDay(day.id)}
-                            style={{ minWidth: '80px' }}
                         >
                             <span className="hide-mobile">{day.name}</span>
                             <span className="show-mobile">{day.short}</span>
@@ -119,52 +195,69 @@ function SchedulePage() {
                 Zaman Bloğu Ekle
             </button>
 
+            {/* Loading State */}
+            {loading && (
+                <div className="card empty-state">
+                    <p>Yükleniyor...</p>
+                </div>
+            )}
+
             {/* Schedule Grid */}
-            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-                <div style={{ display: 'flex' }}>
+            {!loading && (
+            <div className="card schedule-grid" style={{ padding: 0, overflow: 'hidden', maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, overflow: 'auto', display: 'flex' }}>
                     {/* Time Column */}
                     <div
+                        className="schedule-time-column"
                         style={{
                             borderRight: '1px solid var(--border-color)',
                             background: 'var(--bg-secondary)',
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 1,
+                            paddingTop: '8px',
+                            paddingBottom: '8px'
                         }}
                     >
-                        {hours.map((hour) => (
+                        {hours.map((slot, idx) => (
                             <div
-                                key={hour}
+                                key={idx}
                                 style={{
-                                    height: '60px',
-                                    padding: 'var(--space-sm)',
-                                    fontSize: '0.75rem',
+                                    height: '40px',
+                                    padding: 'var(--space-xs)',
+                                    fontSize: slot.minute === 0 ? '0.75rem' : '0.625rem',
                                     color: 'var(--text-muted)',
                                     display: 'flex',
                                     alignItems: 'flex-start',
                                     justifyContent: 'center',
-                                    width: '60px',
-                                    borderBottom: '1px solid var(--border-color)',
+                                    borderBottom: slot.minute === 0 ? '1px solid var(--border-color)' : '1px dashed rgba(var(--border-color-rgb, 200,200,200), 0.3)',
+                                    fontWeight: slot.minute === 0 ? 600 : 400,
+                                    background: 'var(--bg-secondary)'
                                 }}
                             >
-                                {hour.toString().padStart(2, '0')}:00
+                                {slot.minute === 0 ? slot.display : ''}
                             </div>
                         ))}
                     </div>
 
                     {/* Schedule Column */}
-                    <div style={{ flex: 1, position: 'relative' }}>
-                        {hours.map((hour) => (
+                    <div style={{ flex: 1, position: 'relative', minHeight: `${hours.length * 40}px`, paddingTop: '8px', paddingBottom: '8px' }}>
+                        {hours.map((slot, idx) => (
                             <div
-                                key={hour}
+                                key={idx}
                                 style={{
-                                    height: '60px',
-                                    borderBottom: '1px solid var(--border-color)',
+                                    height: '40px',
+                                    borderBottom: slot.minute === 0 ? '1px solid var(--border-color)' : '1px dashed rgba(var(--border-color-rgb, 200,200,200), 0.3)',
                                 }}
                             />
                         ))}
 
                         {/* Blocks */}
                         {dayBlocks.map((block) => {
-                            const top = (block.startHour - 6) * 60
-                            const height = (block.endHour - block.startHour) * 60
+                            const startSlot = block.start_hour * 2 + Math.floor(block.start_minute || 0) / 30
+                            const endSlot = block.end_hour * 2 + Math.floor(block.end_minute || 0) / 30
+                            const top = startSlot * 40
+                            const height = (endSlot - startSlot) * 40
 
                             return (
                                 <div
@@ -179,40 +272,43 @@ function SchedulePage() {
                                         borderRadius: 'var(--radius-md)',
                                         padding: 'var(--space-sm)',
                                         color: 'white',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        justifyContent: 'space-between',
                                         boxShadow: 'var(--shadow-md)',
                                         cursor: 'default',
+                                        overflow: 'hidden'
                                     }}
                                 >
-                                    <div>
-                                        <p style={{ fontWeight: 600, fontSize: '0.875rem' }}>{block.title}</p>
-                                        <p style={{ fontSize: '0.75rem', opacity: 0.9 }}>
-                                            {block.startHour}:00 - {block.endHour}:00
+                                    <div className="schedule-block-content">
+                                        <p className="schedule-block-time">
+                                            {block.start_hour.toString().padStart(2, '0')}:{(block.start_minute || 0).toString().padStart(2, '0')} - {block.end_hour.toString().padStart(2, '0')}:{(block.end_minute || 0).toString().padStart(2, '0')}
                                         </p>
+                                        <p className="schedule-block-title">{block.title}</p>
+                                        <button
+                                            onClick={() => deleteBlock(block.id)}
+                                            style={{
+                                                background: 'rgba(255,255,255,0.2)',
+                                                border: 'none',
+                                                borderRadius: 'var(--radius-sm)',
+                                                padding: '4px',
+                                                cursor: 'pointer',
+                                                color: 'white',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                width: '24px',
+                                                height: '24px',
+                                                flexShrink: 0
+                                            }}
+                                        >
+                                            <TrashIcon />
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => deleteBlock(block.id)}
-                                        style={{
-                                            alignSelf: 'flex-end',
-                                            background: 'rgba(255,255,255,0.2)',
-                                            border: 'none',
-                                            borderRadius: 'var(--radius-sm)',
-                                            padding: '4px',
-                                            cursor: 'pointer',
-                                            color: 'white',
-                                            display: 'flex',
-                                        }}
-                                    >
-                                        <TrashIcon />
-                                    </button>
                                 </div>
                             )
                         })}
                     </div>
                 </div>
             </div>
+            )}
 
             {/* Add Modal */}
             {showAddModal && (
@@ -244,9 +340,18 @@ function SchedulePage() {
                                     type="text"
                                     placeholder="örn: Matematik Çalış"
                                     value={newBlock.title}
-                                    onChange={(e) => setNewBlock({ ...newBlock, title: e.target.value })}
+                                    onChange={(e) => {
+                                        setNewBlock({ ...newBlock, title: e.target.value })
+                                        setTitleError(false)
+                                    }}
                                     autoFocus
+                                    style={{ borderColor: titleError ? '#ef4444' : undefined }}
                                 />
+                                {titleError && (
+                                    <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: 'var(--space-xs)' }}>
+                                        Lütfen bir başlık girin
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex gap-md">
@@ -254,32 +359,123 @@ function SchedulePage() {
                                     <label style={{ display: 'block', marginBottom: 'var(--space-xs)', fontSize: '0.875rem' }}>
                                         Başlangıç
                                     </label>
-                                    <select
-                                        value={newBlock.startHour}
-                                        onChange={(e) => setNewBlock({ ...newBlock, startHour: parseInt(e.target.value) })}
-                                    >
-                                        {hours.map((h) => (
-                                            <option key={h} value={h}>
-                                                {h.toString().padStart(2, '0')}:00
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <div className="flex gap-xs">
+                                        <select
+                                            value={newBlock.start_hour}
+                                            onChange={(e) => {
+                                                const hour = parseInt(e.target.value)
+                                                const startTime = hour * 60 + newBlock.start_minute
+                                                const endTime = newBlock.end_hour * 60 + newBlock.end_minute
+                                                
+                                                // Eğer bitiş başlangıçtan önceyse veya eşitse, bitiş saatini ayarla
+                                                if (endTime <= startTime) {
+                                                    if (newBlock.start_minute === 0) {
+                                                        setNewBlock({ ...newBlock, start_hour: hour, end_hour: hour, end_minute: 30 })
+                                                    } else {
+                                                        setNewBlock({ ...newBlock, start_hour: hour, end_hour: hour + 1, end_minute: 0 })
+                                                    }
+                                                } else {
+                                                    setNewBlock({ ...newBlock, start_hour: hour })
+                                                }
+                                            }}
+                                            style={{ flex: 1 }}
+                                        >
+                                            {Array.from({ length: 24 }, (_, i) => (
+                                                <option key={i} value={i}>
+                                                    {i.toString().padStart(2, '0')}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={newBlock.start_minute}
+                                            onChange={(e) => {
+                                                const minute = parseInt(e.target.value)
+                                                const startTime = newBlock.start_hour * 60 + minute
+                                                const endTime = newBlock.end_hour * 60 + newBlock.end_minute
+                                                
+                                                // Eğer bitiş başlangıçtan önceyse veya eşitse, bitiş saatini ayarla
+                                                if (endTime <= startTime) {
+                                                    if (minute === 0) {
+                                                        setNewBlock({ ...newBlock, start_minute: minute, end_minute: 30 })
+                                                    } else {
+                                                        setNewBlock({ ...newBlock, start_minute: minute, end_hour: newBlock.start_hour + 1, end_minute: 0 })
+                                                    }
+                                                } else {
+                                                    setNewBlock({ ...newBlock, start_minute: minute })
+                                                }
+                                            }}
+                                            style={{ flex: 1 }}
+                                        >
+                                            <option value={0}>00</option>
+                                            <option value={30}>30</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 <div style={{ flex: 1 }}>
                                     <label style={{ display: 'block', marginBottom: 'var(--space-xs)', fontSize: '0.875rem' }}>
                                         Bitiş
                                     </label>
-                                    <select
-                                        value={newBlock.endHour}
-                                        onChange={(e) => setNewBlock({ ...newBlock, endHour: parseInt(e.target.value) })}
-                                    >
-                                        {hours.map((h) => (
-                                            <option key={h} value={h} disabled={h <= newBlock.startHour}>
-                                                {h.toString().padStart(2, '0')}:00
-                                            </option>
-                                        ))}
-                                        <option value={22}>22:00</option>
-                                    </select>
+                                    <div className="flex gap-xs">
+                                        <select
+                                            value={newBlock.end_hour}
+                                            onChange={(e) => {
+                                                const hour = parseInt(e.target.value)
+                                                const startTime = newBlock.start_hour * 60 + newBlock.start_minute
+                                                
+                                                // Aynı saat seçilirse, dakikayı otomatik ayarla
+                                                if (hour === newBlock.start_hour) {
+                                                    if (newBlock.start_minute === 0) {
+                                                        setNewBlock({ ...newBlock, end_hour: hour, end_minute: 30 })
+                                                    } else {
+                                                        // Başlangıç 30 ise, aynı saat olamaz, bir sonraki saate git
+                                                        setNewBlock({ ...newBlock, end_hour: hour + 1, end_minute: 0 })
+                                                    }
+                                                } else {
+                                                    const endTime = hour * 60 + newBlock.end_minute
+                                                    // Eğer seçilen saat başlangıçtan önceyse, dakikayı 00 yap
+                                                    if (endTime <= startTime) {
+                                                        setNewBlock({ ...newBlock, end_hour: hour, end_minute: 0 })
+                                                    } else {
+                                                        setNewBlock({ ...newBlock, end_hour: hour })
+                                                    }
+                                                }
+                                            }}
+                                            style={{ flex: 1 }}
+                                            disabled={newBlock.start_hour === null}
+                                        >
+                                            {Array.from({ length: 24 }, (_, i) => {
+                                                const startTime = newBlock.start_hour * 60 + newBlock.start_minute
+                                                const endTime = i * 60
+                                                // Sadece başlangıçtan sonraki saatleri göster
+                                                if (endTime <= startTime && !(i === newBlock.start_hour && newBlock.start_minute === 0)) {
+                                                    return null
+                                                }
+                                                return (
+                                                    <option key={i} value={i}>
+                                                        {i.toString().padStart(2, '0')}
+                                                    </option>
+                                                )
+                                            })}
+                                        </select>
+                                        <select
+                                            value={newBlock.end_minute}
+                                            onChange={(e) => setNewBlock({ ...newBlock, end_minute: parseInt(e.target.value) })}
+                                            style={{ flex: 1 }}
+                                            disabled={newBlock.start_hour === null}
+                                        >
+                                            {newBlock.end_hour === newBlock.start_hour ? (
+                                                <>
+                                                    {newBlock.start_minute === 0 && <option value={30}>30</option>}
+                                                    {newBlock.start_minute === 30 && <option value={0} disabled style={{ display: 'none' }}>00</option>}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <option value={0}>00</option>
+                                                    <option value={30}>30</option>
+                                                </>
+                                            )}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
@@ -320,6 +516,55 @@ function SchedulePage() {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ isOpen: false, blockId: null })}
+                onConfirm={handleConfirmDelete}
+                title="Zaman bloğunu silmek istediğinize emin misiniz?"
+                message="Bu zaman bloğu kalıcı olarak silinecek. Bu işlem geri alınamaz."
+            />
+
+            {/* Alert Modal */}
+            {alertModal.isOpen && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(0, 0, 0, 0.5)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 1000,
+                        padding: 'var(--space-md)',
+                    }}
+                    onClick={() => setAlertModal({ isOpen: false, message: '' })}
+                >
+                    <div
+                        className="card"
+                        style={{
+                            maxWidth: '400px',
+                            width: '100%',
+                            padding: 'var(--space-xl)',
+                            textAlign: 'center',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ fontSize: '3rem', marginBottom: 'var(--space-md)' }}>⚠️</div>
+                        <p style={{ color: 'var(--text-primary)', marginBottom: 'var(--space-xl)', lineHeight: 1.6 }}>
+                            {alertModal.message}
+                        </p>
+                        <button
+                            className="btn btn-primary"
+                            onClick={() => setAlertModal({ isOpen: false, message: '' })}
+                            style={{ width: '100%' }}
+                        >
+                            Tamam
+                        </button>
                     </div>
                 </div>
             )}

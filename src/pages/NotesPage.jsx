@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage'
+import { useNotes } from '../hooks/useNotes'
+import ConfirmModal from '../components/ConfirmModal'
 
 const PlusIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: 20, height: 20 }}>
@@ -35,66 +36,60 @@ const postItColors = [
 ]
 
 function NotesPage() {
+    const { pdfs, postits, loading, uploading, uploadPdf, deletePdf: deletePdfAPI, addTextPostit, uploadImagePostit, deletePostit: deletePostitAPI } = useNotes()
     const [activeTab, setActiveTab] = useState('postits') // 'pdfs' or 'postits'
-    const [pdfs, setPdfs] = useLocalStorage('pdfs', [])
-    const [postits, setPostits] = useLocalStorage('postits', [])
     const [showAddPostit, setShowAddPostit] = useState(false)
     const [newPostit, setNewPostit] = useState({ text: '', colorIndex: 0 })
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, item: null, type: '' })
+    const [imageModal, setImageModal] = useState({ isOpen: false, imageUrl: '' })
+    const [textModal, setTextModal] = useState({ isOpen: false, text: '', color: null })
     const pdfInputRef = useRef(null)
     const imageInputRef = useRef(null)
 
     // PDF Functions
-    const handlePdfUpload = (e) => {
+    const handlePdfUpload = async (e) => {
         const files = Array.from(e.target.files)
-        const maxSize = 1.5 * 1024 * 1024 // 1.5MB limit per PDF
 
-        files.forEach(file => {
+        for (const file of files) {
             if (file.type === 'application/pdf') {
-                if (file.size > maxSize) {
-                    alert(`"${file.name}" dosyası çok büyük (${(file.size / 1024 / 1024).toFixed(1)}MB). Maksimum 1.5MB yükleyebilirsiniz.`)
-                    return
+                const { error } = await uploadPdf(file)
+                if (error) {
+                    alert(error)
                 }
-
-                const reader = new FileReader()
-                reader.onload = (event) => {
-                    const newPdf = {
-                        id: Date.now() + Math.random(),
-                        name: file.name,
-                        data: event.target.result,
-                        size: file.size,
-                        createdAt: new Date().toISOString()
-                    }
-                    setPdfs(prev => [...prev, newPdf])
-                }
-                reader.onerror = () => {
-                    alert('Dosya yüklenirken hata oluştu!')
-                }
-                reader.readAsDataURL(file)
             }
-        })
+        }
         e.target.value = ''
     }
 
-    const deletePdf = (id) => setPdfs(pdfs.filter(p => p.id !== id))
-
     const openPdf = (pdf) => {
-        const win = window.open()
-        win.document.write(`<iframe src="${pdf.data}" style="width:100%;height:100%;border:none;"></iframe>`)
+        window.open(pdf.file_url, '_blank')
     }
 
     // Post-it Functions
-    const addPostit = () => {
+    const addPostit = async () => {
         if (!newPostit.text.trim()) return
-        const postit = {
-            id: Date.now(),
-            text: newPostit.text.trim(),
-            colorIndex: newPostit.colorIndex,
-            type: 'text',
-            createdAt: new Date().toISOString()
-        }
-        setPostits([postit, ...postits])
+        await addTextPostit(newPostit.text.trim(), newPostit.colorIndex)
         setNewPostit({ text: '', colorIndex: 0 })
         setShowAddPostit(false)
+    }
+
+    // Handle image upload
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0]
+        if (file && file.type.startsWith('image/')) {
+            // Compress image
+            const compressedImage = await compressImage(file)
+            
+            // Convert base64 to blob
+            const blob = await fetch(compressedImage).then(r => r.blob())
+            const compressedFile = new File([blob], file.name, { type: 'image/jpeg' })
+            
+            const { error } = await uploadImagePostit(compressedFile, Math.floor(Math.random() * postItColors.length))
+            if (error) {
+                alert('Resim yüklenirken hata oluştu!')
+            }
+        }
+        e.target.value = ''
     }
 
     // Compress image before saving
@@ -128,28 +123,21 @@ function NotesPage() {
         })
     }
 
-    const handleImageUpload = async (e) => {
-        const file = e.target.files[0]
-        if (file && file.type.startsWith('image/')) {
-            try {
-                const compressedImage = await compressImage(file)
-
-                const postit = {
-                    id: Date.now(),
-                    image: compressedImage,
-                    colorIndex: Math.floor(Math.random() * postItColors.length),
-                    type: 'image',
-                    createdAt: new Date().toISOString()
-                }
-                setPostits([postit, ...postits])
-            } catch (error) {
-                alert('Resim yüklenirken hata oluştu!')
-            }
-        }
-        e.target.value = ''
+    const deletePdf = (pdf) => {
+        setConfirmModal({ isOpen: true, item: pdf, type: 'pdf' })
     }
 
-    const deletePostit = (id) => setPostits(postits.filter(p => p.id !== id))
+    const deletePostit = (postit) => {
+        setConfirmModal({ isOpen: true, item: postit, type: 'postit' })
+    }
+
+    const handleConfirmDelete = async () => {
+        if (confirmModal.type === 'pdf') {
+            await deletePdfAPI(confirmModal.item)
+        } else if (confirmModal.type === 'postit') {
+            await deletePostitAPI(confirmModal.item)
+        }
+    }
 
     return (
         <div className="fade-in">
@@ -172,11 +160,17 @@ function NotesPage() {
             {activeTab === 'pdfs' && (
                 <div>
                     <input type="file" ref={pdfInputRef} accept=".pdf" multiple onChange={handlePdfUpload} style={{ display: 'none' }} />
-                    <button className="btn btn-primary mb-lg" onClick={() => pdfInputRef.current?.click()}>
-                        <PlusIcon /> PDF Ekle
+                    <button className="btn btn-primary mb-lg" onClick={() => pdfInputRef.current?.click()} disabled={uploading}>
+                        <PlusIcon /> {uploading ? 'Yükleniyor...' : 'PDF Ekle'}
                     </button>
 
-                    {pdfs.length === 0 ? (
+                    {loading && (
+                        <div className="card empty-state">
+                            <p>Yükleniyor...</p>
+                        </div>
+                    )}
+
+                    {!loading && pdfs.length === 0 ? (
                         <div className="card empty-state">
                             <PdfIcon />
                             <p style={{ marginTop: 'var(--space-md)' }}>Henüz PDF eklenmemiş</p>
@@ -195,7 +189,7 @@ function NotesPage() {
                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>PDF Dosyası</p>
                                         </div>
                                     </div>
-                                    <button onClick={(e) => { e.stopPropagation(); deletePdf(pdf.id) }} style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 'var(--radius-full)', border: 'none', background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <button onClick={(e) => { e.stopPropagation(); deletePdf(pdf) }} style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 'var(--radius-full)', border: 'none', background: 'rgba(239,68,68,0.1)', color: 'var(--danger)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                         <TrashIcon />
                                     </button>
                                 </div>
@@ -213,33 +207,52 @@ function NotesPage() {
                         <button className="btn btn-primary" onClick={() => setShowAddPostit(true)}>
                             <PlusIcon /> Yeni Not
                         </button>
-                        <button className="btn btn-secondary" onClick={() => imageInputRef.current?.click()}>
-                            <PhotoIcon /> Fotoğraf Ekle
+                        <button className="btn btn-secondary" onClick={() => imageInputRef.current?.click()} disabled={uploading}>
+                            <PhotoIcon /> {uploading ? 'Yükleniyor...' : 'Fotoğraf Ekle'}
                         </button>
                     </div>
 
-                    {postits.length === 0 ? (
+                    {loading && (
+                        <div className="card empty-state">
+                            <p>Yükleniyor...</p>
+                        </div>
+                    )}
+
+                    {!loading && postits.length === 0 ? (
                         <div className="card empty-state">
                             <div style={{ fontSize: '4rem' }}>🗒️</div>
                             <p style={{ marginTop: 'var(--space-md)' }}>Henüz not eklenmemiş</p>
                             <p style={{ fontSize: '0.75rem' }}>Dijital not yaz veya fotoğraf çekerek ekle</p>
                         </div>
-                    ) : (
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-lg)' }}>
+                    ) : !loading && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-lg)', justifyContent: 'flex-start' }}>
                             {postits.map((postit, i) => {
-                                const color = postItColors[postit.colorIndex] || postItColors[0]
+                                const color = postItColors[postit.color_index] || postItColors[0]
                                 return (
-                                    <div key={postit.id} className="slide-in" style={{
-                                        background: color.bg,
-                                        borderRadius: 'var(--radius-md)',
-                                        padding: 'var(--space-lg)',
-                                        minHeight: 180,
-                                        position: 'relative',
-                                        boxShadow: `4px 4px 15px ${color.shadow}`,
-                                        transform: `rotate(${(i % 5 - 2) * 1.5}deg)`,
-                                        transition: 'transform 0.3s',
-                                        animationDelay: `${i * 0.05}s`
-                                    }}
+                                    <div 
+                                        key={postit.id} 
+                                        style={{
+                                            background: color.bg,
+                                            borderRadius: 'var(--radius-md)',
+                                            padding: 'var(--space-lg)',
+                                            width: '200px',
+                                            height: '200px',
+                                            minWidth: '200px',
+                                            minHeight: '200px',
+                                            maxWidth: '200px',
+                                            maxHeight: '200px',
+                                            position: 'relative',
+                                            boxShadow: `4px 4px 15px ${color.shadow}`,
+                                            transform: `rotate(${(i % 5 - 2) * 1.5}deg)`,
+                                            cursor: 'pointer'
+                                        }}
+                                        onClick={() => {
+                                            if (postit.type === 'image') {
+                                                setImageModal({ isOpen: true, imageUrl: postit.image_url });
+                                            } else {
+                                                setTextModal({ isOpen: true, text: postit.text, color });
+                                            }
+                                        }}
                                         onMouseEnter={(e) => e.currentTarget.style.transform = 'rotate(0deg) scale(1.02)'}
                                         onMouseLeave={(e) => e.currentTarget.style.transform = `rotate(${(i % 5 - 2) * 1.5}deg)`}
                                     >
@@ -247,12 +260,39 @@ function NotesPage() {
                                         <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', width: 20, height: 20, borderRadius: '50%', background: 'linear-gradient(135deg, #ef4444, #b91c1c)', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }} />
 
                                         {postit.type === 'image' ? (
-                                            <img src={postit.image} alt="Post-it" style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} />
+                                            <img 
+                                                src={postit.image_url} 
+                                                alt="Post-it" 
+                                                style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 'var(--radius-sm)' }} 
+                                            />
                                         ) : (
-                                            <p style={{ color: '#1a1a1a', fontSize: '0.9375rem', lineHeight: 1.5, fontFamily: "'Caveat', cursive", fontWeight: 500 }}>{postit.text}</p>
+                                            <div
+                                                style={{ 
+                                                    color: '#1a1a1a', 
+                                                    fontSize: '0.9375rem', 
+                                                    lineHeight: 1.5, 
+                                                    fontFamily: "'Caveat', cursive", 
+                                                    fontWeight: 500,
+                                                    wordWrap: 'break-word',
+                                                    overflowWrap: 'break-word',
+                                                    maxHeight: '140px',
+                                                    overflow: 'hidden',
+                                                    display: '-webkit-box',
+                                                    WebkitLineClamp: 6,
+                                                    WebkitBoxOrient: 'vertical',
+                                                    textOverflow: 'ellipsis'
+                                                }}
+                                            >
+                                                {postit.text}
+                                            </div>
                                         )}
 
-                                        <button onClick={() => deletePostit(postit.id)} style={{ position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 'var(--radius-full)', border: 'none', background: 'rgba(0,0,0,0.1)', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.6, transition: 'opacity 0.2s' }}
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                deletePostit(postit);
+                                            }} 
+                                            style={{ position: 'absolute', bottom: 8, right: 8, width: 28, height: 28, borderRadius: 'var(--radius-full)', border: 'none', background: 'rgba(0,0,0,0.1)', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.6, transition: 'opacity 0.2s' }}
                                             onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
                                             onMouseLeave={(e) => e.currentTarget.style.opacity = 0.6}
                                         >
@@ -265,15 +305,35 @@ function NotesPage() {
                     )}
                 </div>
             )}
-
-            {/* Add Post-it Modal */}
             {showAddPostit && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 'var(--space-md)' }} onClick={() => setShowAddPostit(false)}>
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 'var(--space-md)' }} onClick={() => { setShowAddPostit(false); setNewPostit({ text: '', colorIndex: 0 }); }}>
                     <div className="card" style={{ maxWidth: 400, width: '100%' }} onClick={e => e.stopPropagation()}>
                         <h3 style={{ marginBottom: 'var(--space-lg)', fontWeight: 700 }}>🗒️ Yeni Not</h3>
                         <div style={{ marginBottom: 'var(--space-md)' }}>
                             <label style={{ display: 'block', marginBottom: 'var(--space-xs)', fontSize: '0.875rem', fontWeight: 500 }}>Not</label>
-                            <textarea value={newPostit.text} onChange={e => setNewPostit({ ...newPostit, text: e.target.value })} placeholder="Notunuzu yazın..." rows={4} style={{ resize: 'none' }} autoFocus />
+                            <textarea 
+                                value={newPostit.text} 
+                                onChange={e => {
+                                    let text = e.target.value;
+                                    
+                                    // İlk karakter büyük
+                                    if (text.length === 1) {
+                                        text = text.toUpperCase();
+                                    }
+                                    // Nokta/ünlem/soru + boşluk sonrası ilk harf
+                                    else {
+                                        text = text.replace(/([.!?]\s+)([a-zçğıöşü])/g, (match, punctuation, letter) => {
+                                            return punctuation + letter.toUpperCase();
+                                        });
+                                    }
+                                    
+                                    setNewPostit({ ...newPostit, text });
+                                }} 
+                                placeholder="Notunuzu yazın..." 
+                                rows={4} 
+                                style={{ resize: 'none' }} 
+                                autoFocus 
+                            />
                         </div>
                         <div style={{ marginBottom: 'var(--space-lg)' }}>
                             <label style={{ display: 'block', marginBottom: 'var(--space-xs)', fontSize: '0.875rem', fontWeight: 500 }}>Renk</label>
@@ -284,10 +344,161 @@ function NotesPage() {
                             </div>
                         </div>
                         <div className="flex gap-sm">
-                            <button className="btn btn-secondary" onClick={() => setShowAddPostit(false)} style={{ flex: 1 }}>İptal</button>
+                            <button className="btn btn-secondary" onClick={() => { setShowAddPostit(false); setNewPostit({ text: '', colorIndex: 0 }); }} style={{ flex: 1 }}>İptal</button>
                             <button className="btn btn-primary" onClick={addPostit} style={{ flex: 1 }}>Ekle</button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            <ConfirmModal
+                isOpen={confirmModal.isOpen}
+                onClose={() => setConfirmModal({ isOpen: false, item: null, type: '' })}
+                onConfirm={handleConfirmDelete}
+                title="Silmek istediğinize emin misiniz?"
+                message={confirmModal.type === 'pdf' 
+                    ? 'Bu PDF dosyası kalıcı olarak silinecek. Bu işlem geri alınamaz.'
+                    : 'Bu not kalıcı olarak silinecek. Bu işlem geri alınamaz.'}
+            />
+
+            {/* Image Preview Modal */}
+            {imageModal.isOpen && (
+                <div 
+                    style={{ 
+                        position: 'fixed', 
+                        inset: 0, 
+                        background: 'rgba(0,0,0,0.9)', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        zIndex: 9999, 
+                        padding: 'var(--space-md)',
+                        cursor: 'pointer'
+                    }} 
+                    onClick={() => setImageModal({ isOpen: false, imageUrl: '' })}
+                >
+                    <img 
+                        src={imageModal.imageUrl} 
+                        alt="Preview" 
+                        style={{ 
+                            maxWidth: '90%', 
+                            maxHeight: '90%', 
+                            objectFit: 'contain',
+                            borderRadius: 'var(--radius-md)',
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+                        }} 
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <button 
+                        onClick={() => setImageModal({ isOpen: false, imageUrl: '' })}
+                        style={{
+                            position: 'absolute',
+                            top: 'var(--space-lg)',
+                            right: 'var(--space-lg)',
+                            width: 40,
+                            height: 40,
+                            borderRadius: '50%',
+                            border: 'none',
+                            background: 'rgba(255,255,255,0.2)',
+                            color: 'white',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '1.5rem',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+
+            {/* Text Preview Modal */}
+            {textModal.isOpen && (
+                <div 
+                    style={{ 
+                        position: 'fixed', 
+                        inset: 0, 
+                        background: 'rgba(0,0,0,0.8)', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        zIndex: 9999, 
+                        padding: 'var(--space-md)',
+                        cursor: 'pointer'
+                    }} 
+                    onClick={() => setTextModal({ isOpen: false, text: '', color: null })}
+                >
+                    <div
+                        style={{ 
+                            background: textModal.color?.bg || '#fef08a',
+                            borderRadius: 'var(--radius-md)',
+                            padding: 'calc(var(--space-lg) * 2.5)',
+                            width: '500px',
+                            height: '450px',
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            justifyContent: 'flex-start',
+                            boxShadow: `10px 10px 40px ${textModal.color?.shadow || 'rgba(234, 179, 8, 0.5)'}`,
+                            position: 'relative'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Pin */}
+                        <div style={{ 
+                            position: 'absolute', 
+                            top: -20, 
+                            left: '50%', 
+                            transform: 'translateX(-50%)', 
+                            width: 50, 
+                            height: 50, 
+                            borderRadius: '50%', 
+                            background: 'linear-gradient(135deg, #ef4444, #b91c1c)', 
+                            boxShadow: '0 8px 16px rgba(0,0,0,0.3)' 
+                        }} />
+                        
+                        <p style={{ 
+                            color: '#1a1a1a', 
+                            fontSize: '2.25rem', 
+                            lineHeight: 1.5, 
+                            fontFamily: "'Caveat', cursive", 
+                            fontWeight: 500,
+                            textAlign: 'left',
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            width: '100%',
+                            maxHeight: '100%',
+                            overflowY: 'auto',
+                            paddingRight: 'var(--space-sm)'
+                        }}>
+                            {textModal.text}
+                        </p>
+                    </div>
+                    
+                    <button 
+                        onClick={() => setTextModal({ isOpen: false, text: '', color: null })}
+                        style={{
+                            position: 'absolute',
+                            top: 'var(--space-lg)',
+                            right: 'var(--space-lg)',
+                            width: 50,
+                            height: 50,
+                            borderRadius: '50%',
+                            border: 'none',
+                            background: 'rgba(255,255,255,0.3)',
+                            color: 'white',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '2rem',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        ×
+                    </button>
                 </div>
             )}
         </div>

@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
+import capybaraLogo from '../assets/capybara_logo.png'
+import capybaraLogoDark from '../assets/capybara_logo_dark.png'
 
 function AuthPage() {
     const [isLogin, setIsLogin] = useState(true)
@@ -8,7 +10,17 @@ function AuthPage() {
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [message, setMessage] = useState({ type: '', text: '' })
+    const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'light')
     const { signIn, signUp } = useAuth()
+
+    // Theme değişikliklerini izle
+    useEffect(() => {
+        const observer = new MutationObserver(() => {
+            setTheme(document.documentElement.getAttribute('data-theme') || 'light')
+        })
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+        return () => observer.disconnect()
+    }, [])
 
     const handleSubmit = async (e) => {
         e.preventDefault()
@@ -63,10 +75,9 @@ function AuthPage() {
         }}>
             <div className="card fade-in" style={{ maxWidth: 400, width: '100%', textAlign: 'center' }}>
                 {/* Logo */}
-                <div style={{ fontSize: '3rem', marginBottom: 'var(--space-md)' }}>📚</div>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 'var(--space-xs)' }}>
-                    Ders Asistanı
-                </h1>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-xl)' }}>
+                    <img src={theme === 'dark' ? capybaraLogoDark : capybaraLogo} alt="Capybara" style={{ width: '200px', height: 'auto' }} />
+                </div>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-xl)', fontSize: '0.875rem' }}>
                     {isLogin ? 'Hesabınıza giriş yapın' : 'Yeni hesap oluşturun'}
                 </p>
