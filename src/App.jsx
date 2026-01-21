@@ -408,7 +408,7 @@ function App() {
   }
 
   return (
-    <Router>
+    <Router basename="/Ders_calisma_asistani">
       <AppContent />
     </Router>
   )
