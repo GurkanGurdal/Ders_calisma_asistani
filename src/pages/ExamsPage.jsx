@@ -1,6 +1,14 @@
 import { useState } from 'react'
-import { useExams, TYT_SUBJECTS, AYT_SUBJECTS, calculateNet } from '../hooks/useExams'
+import { useExams, TYT_SUBJECTS, AYT_SAYISAL_SUBJECTS, AYT_ESIT_SUBJECTS, AYT_SOZEL_SUBJECTS, getSubjectsByExamType, getPrefixByExamType, calculateNet } from '../hooks/useExams'
 import ConfirmModal from '../components/ConfirmModal'
+
+// Sınav türü etiketleri
+const EXAM_TYPE_LABELS = {
+    'TYT': 'TYT',
+    'AYT_SAYISAL': 'AYT (Sayısal)',
+    'AYT_ESIT': 'AYT (Eşit Ağırlık)',
+    'AYT_SOZEL': 'AYT (Sözel)'
+}
 
 // Basit çizgi grafik komponenti
 const LineChart = ({ data, title, color = '#8B7355' }) => {
@@ -164,24 +172,79 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
     const [examType, setExamType] = useState(initialData?.exam_type || 'TYT')
     const [examDate, setExamDate] = useState(initialData?.exam_date || new Date().toISOString().split('T')[0])
     const [formData, setFormData] = useState(initialData || {})
+    const [errors, setErrors] = useState({})
 
-    const subjects = examType === 'TYT' ? TYT_SUBJECTS : AYT_SUBJECTS
-    const prefix = examType === 'TYT' ? 'tyt_' : 'ayt_'
+    const subjects = getSubjectsByExamType(examType)
+    const prefix = getPrefixByExamType(examType)
+
+    // Bugünün tarihi (gelecek tarih engeli için)
+    const today = new Date().toISOString().split('T')[0]
 
     const handleInputChange = (subjectId, field, value) => {
         const numValue = Math.max(0, parseInt(value) || 0)
-        setFormData(prev => ({
-            ...prev,
+        const newFormData = {
+            ...formData,
             [`${prefix}${subjectId}_${field}`]: numValue
-        }))
+        }
+        setFormData(newFormData)
+        
+        // Hata kontrolü
+        validateSubject(subjectId, newFormData)
+    }
+
+    const validateSubject = (subjectId, data) => {
+        const subject = subjects.find(s => s.id === subjectId)
+        if (!subject) return
+
+        const dogru = data[`${prefix}${subjectId}_dogru`] || 0
+        const yanlis = data[`${prefix}${subjectId}_yanlis`] || 0
+        const total = dogru + yanlis
+
+        if (total > subject.maxQuestions) {
+            setErrors(prev => ({
+                ...prev,
+                [subjectId]: `Doğru + Yanlış toplamı ${subject.maxQuestions}'ü geçemez!`
+            }))
+        } else {
+            setErrors(prev => {
+                const newErrors = { ...prev }
+                delete newErrors[subjectId]
+                return newErrors
+            })
+        }
     }
 
     const getSubjectValue = (subjectId, field) => {
         return formData[`${prefix}${subjectId}_${field}`] || 0
     }
 
+    // Tüm hataları kontrol et
+    const validateAllSubjects = () => {
+        let hasError = false
+        const newErrors = {}
+
+        subjects.forEach(subject => {
+            const dogru = getSubjectValue(subject.id, 'dogru')
+            const yanlis = getSubjectValue(subject.id, 'yanlis')
+            const total = dogru + yanlis
+
+            if (total > subject.maxQuestions) {
+                newErrors[subject.id] = `Doğru + Yanlış toplamı ${subject.maxQuestions}'ü geçemez!`
+                hasError = true
+            }
+        })
+
+        setErrors(newErrors)
+        return !hasError
+    }
+
     const handleSubmit = (e) => {
         e.preventDefault()
+        
+        if (!validateAllSubjects()) {
+            return
+        }
+
         onSubmit({
             ...formData,
             exam_type: examType,
@@ -197,6 +260,12 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
         totalNet += calculateNet(dogru, yanlis)
     })
 
+    // Max toplam net
+    const maxTotalNet = subjects.reduce((sum, s) => sum + s.maxQuestions, 0)
+
+    // Herhangi bir hata var mı?
+    const hasErrors = Object.keys(errors).length > 0
+
     return (
         <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)' }}>
@@ -204,12 +273,18 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                     <label className="form-label">Sınav Türü</label>
                     <select
                         value={examType}
-                        onChange={(e) => setExamType(e.target.value)}
+                        onChange={(e) => {
+                            setExamType(e.target.value)
+                            setFormData({})
+                            setErrors({})
+                        }}
                         className="form-input"
                         disabled={!!initialData}
                     >
                         <option value="TYT">TYT</option>
-                        <option value="AYT">AYT</option>
+                        <option value="AYT_SAYISAL">AYT (Sayısal)</option>
+                        <option value="AYT_ESIT">AYT (Eşit Ağırlık)</option>
+                        <option value="AYT_SOZEL">AYT (Sözel)</option>
                     </select>
                 </div>
                 <div className="form-group">
@@ -218,6 +293,7 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                         type="date"
                         value={examDate}
                         onChange={(e) => setExamDate(e.target.value)}
+                        max={today}
                         className="form-input"
                     />
                 </div>
@@ -231,18 +307,19 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                 {subjects.map(subject => {
                     const dogru = getSubjectValue(subject.id, 'dogru')
                     const yanlis = getSubjectValue(subject.id, 'yanlis')
-                    const bos = getSubjectValue(subject.id, 'bos')
+                    const bos = subject.maxQuestions - dogru - yanlis
                     const net = calculateNet(dogru, yanlis)
-                    const total = dogru + yanlis + bos
+                    const total = dogru + yanlis
+                    const hasSubjectError = !!errors[subject.id]
 
                     return (
                         <div 
                             key={subject.id}
                             style={{
                                 padding: 'var(--space-md)',
-                                background: 'var(--glass-bg)',
+                                background: hasSubjectError ? 'rgba(220, 38, 38, 0.1)' : 'var(--glass-bg)',
                                 borderRadius: 'var(--radius-md)',
-                                border: '1px solid var(--border-color)'
+                                border: `1px solid ${hasSubjectError ? 'var(--danger)' : 'var(--border-color)'}`
                             }}
                         >
                             <div style={{ 
@@ -256,10 +333,24 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                                     fontSize: '0.875rem', 
                                     color: total > subject.maxQuestions ? 'var(--danger)' : 'var(--text-secondary)'
                                 }}>
-                                    Toplam: {total} / {subject.maxQuestions} | Net: <strong style={{ color: 'var(--primary-500)' }}>{net.toFixed(2)}</strong>
+                                    {total} / {subject.maxQuestions} | Boş: {Math.max(0, bos)} | Net: <strong style={{ color: 'var(--primary-500)' }}>{net.toFixed(2)}</strong>
                                 </span>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-sm)' }}>
+
+                            {hasSubjectError && (
+                                <div style={{
+                                    padding: 'var(--space-xs) var(--space-sm)',
+                                    background: 'rgba(220, 38, 38, 0.2)',
+                                    borderRadius: 'var(--radius-sm)',
+                                    color: 'var(--danger)',
+                                    fontSize: '0.75rem',
+                                    marginBottom: 'var(--space-sm)'
+                                }}>
+                                    ⚠️ {errors[subject.id]}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-sm)' }}>
                                 <div>
                                     <label style={{ fontSize: '0.75rem', color: 'var(--success)', display: 'block', marginBottom: '4px' }}>Doğru</label>
                                     <input
@@ -284,18 +375,6 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                                         style={{ textAlign: 'center' }}
                                     />
                                 </div>
-                                <div>
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Boş</label>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        max={subject.maxQuestions}
-                                        value={bos}
-                                        onChange={(e) => handleInputChange(subject.id, 'bos', e.target.value)}
-                                        className="form-input"
-                                        style={{ textAlign: 'center' }}
-                                    />
-                                </div>
                             </div>
                         </div>
                     )
@@ -310,7 +389,7 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                 textAlign: 'center'
             }}>
                 <span style={{ fontSize: '1.25rem', fontWeight: '700', color: 'var(--primary-500)' }}>
-                    Toplam Net: {totalNet.toFixed(2)}
+                    Toplam Net: {totalNet.toFixed(2)} / {maxTotalNet}
                 </span>
             </div>
 
@@ -318,7 +397,12 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                 <button type="button" onClick={onCancel} className="btn btn-secondary" style={{ flex: 1 }}>
                     İptal
                 </button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                <button 
+                    type="submit" 
+                    className="btn btn-primary" 
+                    style={{ flex: 1 }}
+                    disabled={hasErrors}
+                >
                     {initialData ? 'Güncelle' : 'Kaydet'}
                 </button>
             </div>
@@ -348,12 +432,21 @@ export default function ExamsPage() {
         }
     }
 
-    const tytChartData = getChartData('TYT')
-    const aytChartData = getChartData('AYT')
-    const tytStats = getStats('TYT')
-    const aytStats = getStats('AYT')
+    const chartData = getChartData(activeTab)
+    const stats = getStats(activeTab)
 
     const filteredExams = exams.filter(exam => exam.exam_type === activeTab)
+
+    // Tab renkleri
+    const getTabColor = (tab) => {
+        switch(tab) {
+            case 'TYT': return '#8B7355'
+            case 'AYT_SAYISAL': return '#2563eb'
+            case 'AYT_ESIT': return '#7c3aed'
+            case 'AYT_SOZEL': return '#059669'
+            default: return '#8B7355'
+        }
+    }
 
     if (loading) {
         return (
@@ -366,7 +459,7 @@ export default function ExamsPage() {
     return (
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
             {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xl)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-xl)', flexWrap: 'wrap', gap: 'var(--space-md)' }}>
                 <div>
                     <h1 style={{ fontSize: '1.75rem', fontWeight: '700', marginBottom: 'var(--space-xs)' }}>
                         📊 Deneme Analizi
@@ -384,8 +477,8 @@ export default function ExamsPage() {
             </div>
 
             {/* Tab Buttons */}
-            <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xl)' }}>
-                {['TYT', 'AYT'].map(tab => (
+            <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xl)', flexWrap: 'wrap' }}>
+                {['TYT', 'AYT_SAYISAL', 'AYT_ESIT', 'AYT_SOZEL'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -393,14 +486,15 @@ export default function ExamsPage() {
                             padding: 'var(--space-sm) var(--space-lg)',
                             borderRadius: 'var(--radius-md)',
                             border: 'none',
-                            background: activeTab === tab ? 'var(--gradient-primary)' : 'var(--glass-bg)',
+                            background: activeTab === tab ? getTabColor(tab) : 'var(--glass-bg)',
                             color: activeTab === tab ? 'white' : 'var(--text-primary)',
                             fontWeight: '600',
                             cursor: 'pointer',
-                            transition: 'all 0.2s ease'
+                            transition: 'all 0.2s ease',
+                            fontSize: '0.875rem'
                         }}
                     >
-                        {tab}
+                        {EXAM_TYPE_LABELS[tab]}
                     </button>
                 ))}
             </div>
@@ -413,15 +507,15 @@ export default function ExamsPage() {
                 marginBottom: 'var(--space-xl)'
             }}>
                 {[
-                    { label: 'Deneme Sayısı', value: activeTab === 'TYT' ? tytStats.count : aytStats.count, icon: '📝' },
-                    { label: 'Ortalama Net', value: activeTab === 'TYT' ? tytStats.avgNet : aytStats.avgNet, icon: '📈' },
-                    { label: 'En Yüksek', value: activeTab === 'TYT' ? tytStats.maxNet : aytStats.maxNet, icon: '🏆' },
-                    { label: 'En Düşük', value: activeTab === 'TYT' ? tytStats.minNet : aytStats.minNet, icon: '📉' },
+                    { label: 'Deneme Sayısı', value: stats.count, icon: '📝' },
+                    { label: 'Ortalama Net', value: stats.avgNet, icon: '📈' },
+                    { label: 'En Yüksek', value: stats.maxNet, icon: '🏆' },
+                    { label: 'En Düşük', value: stats.minNet, icon: '📉' },
                     { 
                         label: 'Son Değişim', 
-                        value: activeTab === 'TYT' ? tytStats.trend : aytStats.trend, 
-                        icon: parseFloat(activeTab === 'TYT' ? tytStats.trend : aytStats.trend) >= 0 ? '🔼' : '🔽',
-                        color: parseFloat(activeTab === 'TYT' ? tytStats.trend : aytStats.trend) >= 0 ? 'var(--success)' : 'var(--danger)'
+                        value: stats.trend, 
+                        icon: parseFloat(stats.trend) >= 0 ? '🔼' : '🔽',
+                        color: parseFloat(stats.trend) >= 0 ? 'var(--success)' : 'var(--danger)'
                     }
                 ].map((stat, i) => (
                     <div 
@@ -441,15 +535,15 @@ export default function ExamsPage() {
             {/* Chart */}
             <div className="card" style={{ padding: 'var(--space-lg)', marginBottom: 'var(--space-xl)' }}>
                 <LineChart 
-                    data={activeTab === 'TYT' ? tytChartData : aytChartData}
-                    title={`${activeTab} Net Gelişimi`}
-                    color={activeTab === 'TYT' ? '#8B7355' : '#6B8E23'}
+                    data={chartData}
+                    title={`${EXAM_TYPE_LABELS[activeTab]} Net Gelişimi`}
+                    color={getTabColor(activeTab)}
                 />
             </div>
 
             {/* Exam List */}
             <div className="card" style={{ padding: 'var(--space-lg)' }}>
-                <h3 style={{ marginBottom: 'var(--space-lg)' }}>📋 {activeTab} Denemeleri</h3>
+                <h3 style={{ marginBottom: 'var(--space-lg)' }}>📋 {EXAM_TYPE_LABELS[activeTab]} Denemeleri</h3>
                 
                 {filteredExams.length === 0 ? (
                     <div style={{ 
@@ -457,7 +551,7 @@ export default function ExamsPage() {
                         textAlign: 'center', 
                         color: 'var(--text-secondary)' 
                     }}>
-                        <p>Henüz {activeTab} denemesi eklenmemiş.</p>
+                        <p>Henüz {EXAM_TYPE_LABELS[activeTab]} denemesi eklenmemiş.</p>
                         <button 
                             className="btn btn-primary"
                             onClick={() => setShowAddModal(true)}
@@ -486,7 +580,9 @@ export default function ExamsPage() {
                                         display: 'flex', 
                                         justifyContent: 'space-between', 
                                         alignItems: 'center',
-                                        marginBottom: 'var(--space-md)'
+                                        marginBottom: 'var(--space-md)',
+                                        flexWrap: 'wrap',
+                                        gap: 'var(--space-sm)'
                                     }}>
                                         <div>
                                             <span style={{ 
@@ -503,7 +599,7 @@ export default function ExamsPage() {
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                                             <span style={{
                                                 padding: 'var(--space-xs) var(--space-sm)',
-                                                background: 'var(--gradient-primary)',
+                                                background: getTabColor(exam.exam_type),
                                                 color: 'white',
                                                 borderRadius: 'var(--radius-sm)',
                                                 fontWeight: '600',
@@ -630,6 +726,17 @@ export default function ExamsPage() {
                         </div>
                         
                         <div style={{ marginBottom: 'var(--space-lg)', textAlign: 'center' }}>
+                            <div style={{ 
+                                fontSize: '0.75rem', 
+                                color: 'white',
+                                background: getTabColor(selectedExam.exam_type),
+                                padding: 'var(--space-xs) var(--space-sm)',
+                                borderRadius: 'var(--radius-sm)',
+                                display: 'inline-block',
+                                marginBottom: 'var(--space-sm)'
+                            }}>
+                                {EXAM_TYPE_LABELS[selectedExam.exam_type]}
+                            </div>
                             <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-xs)' }}>
                                 {new Date(selectedExam.exam_date).toLocaleDateString('tr-TR', {
                                     day: 'numeric',
@@ -640,9 +747,7 @@ export default function ExamsPage() {
                             <div style={{
                                 fontSize: '2rem',
                                 fontWeight: '700',
-                                background: 'var(--gradient-primary)',
-                                WebkitBackgroundClip: 'text',
-                                WebkitTextFillColor: 'transparent'
+                                color: getTabColor(selectedExam.exam_type)
                             }}>
                                 {calculateTotalNet(selectedExam, selectedExam.exam_type).toFixed(2)} Net
                             </div>
@@ -655,7 +760,7 @@ export default function ExamsPage() {
                                     subject={subject.name}
                                     net={subject.net}
                                     maxQuestions={subject.maxQuestions}
-                                    color={selectedExam.exam_type === 'TYT' ? '#8B7355' : '#6B8E23'}
+                                    color={getTabColor(selectedExam.exam_type)}
                                 />
                             ))}
                         </div>

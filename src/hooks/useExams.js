@@ -10,12 +10,24 @@ export const TYT_SUBJECTS = [
     { id: 'sosyal', name: 'Sosyal Bilimler', maxQuestions: 20 }
 ]
 
-// AYT Ders Bilgileri
-export const AYT_SUBJECTS = [
+// AYT Sayısal Dersleri
+export const AYT_SAYISAL_SUBJECTS = [
     { id: 'matematik', name: 'Matematik', maxQuestions: 40 },
     { id: 'fizik', name: 'Fizik', maxQuestions: 14 },
     { id: 'kimya', name: 'Kimya', maxQuestions: 13 },
-    { id: 'biyoloji', name: 'Biyoloji', maxQuestions: 13 },
+    { id: 'biyoloji', name: 'Biyoloji', maxQuestions: 13 }
+]
+
+// AYT Eşit Ağırlık Dersleri
+export const AYT_ESIT_SUBJECTS = [
+    { id: 'matematik', name: 'Matematik', maxQuestions: 40 },
+    { id: 'edebiyat', name: 'Edebiyat', maxQuestions: 24 },
+    { id: 'tarih1', name: 'Tarih-1', maxQuestions: 10 },
+    { id: 'cografya1', name: 'Coğrafya-1', maxQuestions: 6 }
+]
+
+// AYT Sözel Dersleri
+export const AYT_SOZEL_SUBJECTS = [
     { id: 'edebiyat', name: 'Edebiyat', maxQuestions: 24 },
     { id: 'tarih1', name: 'Tarih-1', maxQuestions: 10 },
     { id: 'cografya1', name: 'Coğrafya-1', maxQuestions: 6 },
@@ -25,6 +37,22 @@ export const AYT_SUBJECTS = [
     { id: 'din', name: 'Din Kültürü', maxQuestions: 6 }
 ]
 
+// Sınav türüne göre ders listesi getir
+export const getSubjectsByExamType = (examType) => {
+    switch (examType) {
+        case 'TYT': return TYT_SUBJECTS
+        case 'AYT_SAYISAL': return AYT_SAYISAL_SUBJECTS
+        case 'AYT_ESIT': return AYT_ESIT_SUBJECTS
+        case 'AYT_SOZEL': return AYT_SOZEL_SUBJECTS
+        default: return []
+    }
+}
+
+// Sınav türüne göre prefix getir
+export const getPrefixByExamType = (examType) => {
+    return examType === 'TYT' ? 'tyt_' : 'ayt_'
+}
+
 // Net hesaplama fonksiyonu
 export const calculateNet = (dogru, yanlis) => {
     return Math.max(0, dogru - (yanlis / 4))
@@ -32,8 +60,8 @@ export const calculateNet = (dogru, yanlis) => {
 
 // Toplam net hesaplama
 export const calculateTotalNet = (examData, examType) => {
-    const subjects = examType === 'TYT' ? TYT_SUBJECTS : AYT_SUBJECTS
-    const prefix = examType === 'TYT' ? 'tyt_' : 'ayt_'
+    const subjects = getSubjectsByExamType(examType)
+    const prefix = getPrefixByExamType(examType)
     
     let totalNet = 0
     subjects.forEach(subject => {
@@ -47,13 +75,13 @@ export const calculateTotalNet = (examData, examType) => {
 
 // Ders bazlı net hesaplama
 export const calculateSubjectNets = (examData, examType) => {
-    const subjects = examType === 'TYT' ? TYT_SUBJECTS : AYT_SUBJECTS
-    const prefix = examType === 'TYT' ? 'tyt_' : 'ayt_'
+    const subjects = getSubjectsByExamType(examType)
+    const prefix = getPrefixByExamType(examType)
     
     return subjects.map(subject => {
         const dogru = examData[`${prefix}${subject.id}_dogru`] || 0
         const yanlis = examData[`${prefix}${subject.id}_yanlis`] || 0
-        const bos = examData[`${prefix}${subject.id}_bos`] || 0
+        const bos = subject.maxQuestions - dogru - yanlis
         const net = calculateNet(dogru, yanlis)
         
         return {
