@@ -8,6 +8,7 @@ import CoursesPage from './pages/CoursesPage'
 import PomodoroPage from './pages/PomodoroPage'
 import NotesPage from './pages/NotesPage'
 import LinksPage from './pages/LinksPage'
+import ExamsPage from './pages/ExamsPage'
 import AuthPage from './pages/AuthPage'
 import capybaraLogo from './assets/capybara_logo.png'
 import capybaraLogoDark from './assets/capybara_logo_dark.png'
@@ -50,6 +51,12 @@ const NotesIcon = () => (
   </svg>
 )
 
+const ChartIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+  </svg>
+)
+
 const LinksIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
@@ -85,6 +92,7 @@ function Sidebar({ theme, toggleTheme, isOpen, setIsOpen, onSignOut, userEmail }
     { path: '/notes', icon: <NotesIcon />, label: 'Notlar' },
     { path: '/links', icon: <LinksIcon />, label: 'Bağlantılar' },
     { path: '/pomodoro', icon: <TimerIcon />, label: 'Pomodoro' },
+    { path: '/exams', icon: <ChartIcon />, label: 'Deneme Analizi' },
   ]
 
   return (
@@ -173,6 +181,7 @@ function MobileNav() {
     { path: '/notes', icon: <NotesIcon />, label: 'Notlar' },
     { path: '/links', icon: <LinksIcon />, label: 'Bağlantılar' },
     { path: '/pomodoro', icon: <TimerIcon />, label: 'Pomodoro' },
+    { path: '/exams', icon: <ChartIcon />, label: 'Deneme' },
   ]
 
   return (
@@ -353,6 +362,7 @@ function AppContent() {
           <Route path="/notes" element={<NotesPage />} />
           <Route path="/links" element={<LinksPage />} />
           <Route path="/pomodoro" element={<PomodoroPage />} />
+          <Route path="/exams" element={<ExamsPage />} />
         </Routes>
       </main>
 
