@@ -172,27 +172,36 @@ export function useExams() {
 
     // Grafik verilerini hazırla
     const getChartData = (examType) => {
+        // AYT seçiliyse tüm AYT türlerini birleştir
+        const aytTypes = ['AYT_SAYISAL', 'AYT_ESIT', 'AYT_SOZEL']
         const filteredExams = exams
-            .filter(exam => exam.exam_type === examType)
+            .filter(exam => examType === 'AYT' 
+                ? aytTypes.includes(exam.exam_type) 
+                : exam.exam_type === examType)
             .sort((a, b) => new Date(a.exam_date) - new Date(b.exam_date))
         
         return filteredExams.map(exam => ({
             date: new Date(exam.exam_date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
             fullDate: exam.exam_date,
-            totalNet: calculateTotalNet(exam, examType),
-            subjectNets: calculateSubjectNets(exam, examType)
+            totalNet: calculateTotalNet(exam, exam.exam_type),
+            subjectNets: calculateSubjectNets(exam, exam.exam_type),
+            examType: exam.exam_type
         }))
     }
 
     // İstatistikler
     const getStats = (examType) => {
-        const filteredExams = exams.filter(exam => exam.exam_type === examType)
+        // AYT seçiliyse tüm AYT türlerini birleştir
+        const aytTypes = ['AYT_SAYISAL', 'AYT_ESIT', 'AYT_SOZEL']
+        const filteredExams = exams.filter(exam => examType === 'AYT' 
+            ? aytTypes.includes(exam.exam_type) 
+            : exam.exam_type === examType)
         
         if (filteredExams.length === 0) {
             return { count: 0, avgNet: 0, maxNet: 0, minNet: 0, trend: 0 }
         }
         
-        const nets = filteredExams.map(exam => calculateTotalNet(exam, examType))
+        const nets = filteredExams.map(exam => calculateTotalNet(exam, exam.exam_type))
         const avgNet = nets.reduce((a, b) => a + b, 0) / nets.length
         const maxNet = Math.max(...nets)
         const minNet = Math.min(...nets)
@@ -201,8 +210,8 @@ export function useExams() {
         let trend = 0
         if (filteredExams.length >= 2) {
             const sorted = [...filteredExams].sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date))
-            const lastNet = calculateTotalNet(sorted[0], examType)
-            const prevNet = calculateTotalNet(sorted[1], examType)
+            const lastNet = calculateTotalNet(sorted[0], sorted[0].exam_type)
+            const prevNet = calculateTotalNet(sorted[1], sorted[1].exam_type)
             trend = lastNet - prevNet
         }
         

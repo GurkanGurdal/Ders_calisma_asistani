@@ -5,10 +5,14 @@ import ConfirmModal from '../components/ConfirmModal'
 // Sınav türü etiketleri
 const EXAM_TYPE_LABELS = {
     'TYT': 'TYT',
+    'AYT': 'AYT',
     'AYT_SAYISAL': 'AYT (Sayısal)',
     'AYT_ESIT': 'AYT (Eşit Ağırlık)',
     'AYT_SOZEL': 'AYT (Sözel)'
 }
+
+// AYT türleri (birleştirme için)
+const AYT_TYPES = ['AYT_SAYISAL', 'AYT_ESIT', 'AYT_SOZEL']
 
 // Basit çizgi grafik komponenti
 const LineChart = ({ data, title, color = '#8B7355' }) => {
@@ -181,7 +185,9 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
     const today = new Date().toISOString().split('T')[0]
 
     const handleInputChange = (subjectId, field, value) => {
-        const numValue = Math.max(0, parseInt(value) || 0)
+        // Leading zero'ları kaldır ve sayıya çevir
+        const cleanValue = value.replace(/^0+/, '') || '0'
+        const numValue = Math.max(0, parseInt(cleanValue) || 0)
         const newFormData = {
             ...formData,
             [`${prefix}${subjectId}_${field}`]: numValue
@@ -435,18 +441,13 @@ export default function ExamsPage() {
     const chartData = getChartData(activeTab)
     const stats = getStats(activeTab)
 
-    const filteredExams = exams.filter(exam => exam.exam_type === activeTab)
+    // AYT seçili ise tüm AYT türlerini filtrele
+    const filteredExams = activeTab === 'AYT' 
+        ? exams.filter(exam => AYT_TYPES.includes(exam.exam_type))
+        : exams.filter(exam => exam.exam_type === activeTab)
 
-    // Tab renkleri
-    const getTabColor = (tab) => {
-        switch(tab) {
-            case 'TYT': return '#8B7355'
-            case 'AYT_SAYISAL': return '#2563eb'
-            case 'AYT_ESIT': return '#7c3aed'
-            case 'AYT_SOZEL': return '#059669'
-            default: return '#8B7355'
-        }
-    }
+    // Tek renk kullan
+    const mainColor = '#8B7355'
 
     if (loading) {
         return (
@@ -478,7 +479,7 @@ export default function ExamsPage() {
 
             {/* Tab Buttons */}
             <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xl)', flexWrap: 'wrap' }}>
-                {['TYT', 'AYT_SAYISAL', 'AYT_ESIT', 'AYT_SOZEL'].map(tab => (
+                {['TYT', 'AYT'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -486,7 +487,7 @@ export default function ExamsPage() {
                             padding: 'var(--space-sm) var(--space-lg)',
                             borderRadius: 'var(--radius-md)',
                             border: 'none',
-                            background: activeTab === tab ? getTabColor(tab) : 'var(--glass-bg)',
+                            background: activeTab === tab ? mainColor : 'var(--glass-bg)',
                             color: activeTab === tab ? 'white' : 'var(--text-primary)',
                             fontWeight: '600',
                             cursor: 'pointer',
@@ -537,7 +538,7 @@ export default function ExamsPage() {
                 <LineChart 
                     data={chartData}
                     title={`${EXAM_TYPE_LABELS[activeTab]} Net Gelişimi`}
-                    color={getTabColor(activeTab)}
+                    color={mainColor}
                 />
             </div>
 
@@ -599,7 +600,7 @@ export default function ExamsPage() {
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
                                             <span style={{
                                                 padding: 'var(--space-xs) var(--space-sm)',
-                                                background: getTabColor(exam.exam_type),
+                                                background: mainColor,
                                                 color: 'white',
                                                 borderRadius: 'var(--radius-sm)',
                                                 fontWeight: '600',
@@ -729,7 +730,7 @@ export default function ExamsPage() {
                             <div style={{ 
                                 fontSize: '0.75rem', 
                                 color: 'white',
-                                background: getTabColor(selectedExam.exam_type),
+                                background: mainColor,
                                 padding: 'var(--space-xs) var(--space-sm)',
                                 borderRadius: 'var(--radius-sm)',
                                 display: 'inline-block',
@@ -747,7 +748,7 @@ export default function ExamsPage() {
                             <div style={{
                                 fontSize: '2rem',
                                 fontWeight: '700',
-                                color: getTabColor(selectedExam.exam_type)
+                                color: mainColor
                             }}>
                                 {calculateTotalNet(selectedExam, selectedExam.exam_type).toFixed(2)} Net
                             </div>
@@ -760,7 +761,7 @@ export default function ExamsPage() {
                                     subject={subject.name}
                                     net={subject.net}
                                     maxQuestions={subject.maxQuestions}
-                                    color={getTabColor(selectedExam.exam_type)}
+                                    color={mainColor}
                                 />
                             ))}
                         </div>
