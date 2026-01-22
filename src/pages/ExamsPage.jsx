@@ -363,8 +363,10 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                                         type="number"
                                         min="0"
                                         max={subject.maxQuestions}
-                                        value={dogru}
+                                        value={dogru === 0 ? '' : dogru}
                                         onChange={(e) => handleInputChange(subject.id, 'dogru', e.target.value)}
+                                        onBlur={(e) => { if (e.target.value === '') handleInputChange(subject.id, 'dogru', '0') }}
+                                        placeholder="0"
                                         className="form-input"
                                         style={{ textAlign: 'center' }}
                                     />
@@ -375,8 +377,10 @@ const ExamForm = ({ onSubmit, onCancel, initialData = null }) => {
                                         type="number"
                                         min="0"
                                         max={subject.maxQuestions}
-                                        value={yanlis}
+                                        value={yanlis === 0 ? '' : yanlis}
                                         onChange={(e) => handleInputChange(subject.id, 'yanlis', e.target.value)}
+                                        onBlur={(e) => { if (e.target.value === '') handleInputChange(subject.id, 'yanlis', '0') }}
+                                        placeholder="0"
                                         className="form-input"
                                         style={{ textAlign: 'center' }}
                                     />

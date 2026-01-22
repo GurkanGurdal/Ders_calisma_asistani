@@ -178,7 +178,12 @@ export function useExams() {
             .filter(exam => examType === 'AYT' 
                 ? aytTypes.includes(exam.exam_type) 
                 : exam.exam_type === examType)
-            .sort((a, b) => new Date(a.exam_date) - new Date(b.exam_date))
+            .sort((a, b) => {
+                // Önce tarihe göre, aynı tarihte ise created_at'e göre sırala
+                const dateCompare = new Date(a.exam_date) - new Date(b.exam_date)
+                if (dateCompare !== 0) return dateCompare
+                return new Date(a.created_at) - new Date(b.created_at)
+            })
         
         return filteredExams.map(exam => ({
             date: new Date(exam.exam_date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
