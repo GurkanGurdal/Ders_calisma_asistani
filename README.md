@@ -11,8 +11,6 @@ Modern, responsive ve kullanıcı dostu bir ders çalışma yönetim uygulaması
 ✅ PDF ve görsel depolama  
 ✅ Otomatik yedekleme  
 
-📖 **Detaylı kurulum için:** [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) dosyasına bakın
-
 ## ✨ Özellikler
 
 - ✅ **Yapılacaklar Listesi**: Görevlerinizi önceliklendirin ve takip edin
@@ -23,19 +21,6 @@ Modern, responsive ve kullanıcı dostu bir ders çalışma yönetim uygulaması
 - 🌓 **Dark/Light Mode**: Göz sağlığınız için
 - 📱 **Responsive**: Tüm cihazlarda mükemmel görünüm
 - ☁️ **Bulut Depolama**: Verileriniz her zaman güvende
-
-## 🛠️ Kurulum
-
-```bash
-# Bağımlılıkları yükle
-npm install
-
-# .env dosyasını oluştur ve Supabase bilgilerini ekle
-cp .env.example .env
-
-# Development server'ı başlat
-npm run dev
-```
 
 ## 🔧 Teknoloji Stack
 
